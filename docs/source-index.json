@@ -1,0 +1,58 @@
+[
+  {
+    "path": "archive/build_check.py.txt",
+    "changed_constants": 36,
+    "private_comments_removed": true,
+    "syntax": true,
+    "original_program_executed": false
+  },
+  {
+    "path": "archive/build_xlsx.py.txt",
+    "changed_constants": 39,
+    "private_comments_removed": true,
+    "syntax": true,
+    "original_program_executed": false
+  },
+  {
+    "path": "archive/extract_final.py.txt",
+    "changed_constants": 2,
+    "private_comments_removed": true,
+    "syntax": true,
+    "original_program_executed": false
+  },
+  {
+    "path": "archive/fix16.py.txt",
+    "changed_constants": 10,
+    "private_comments_removed": true,
+    "syntax": true,
+    "original_program_executed": false
+  },
+  {
+    "path": "archive/fix_pdf.py.txt",
+    "changed_constants": 1,
+    "private_comments_removed": true,
+    "syntax": true,
+    "original_program_executed": false
+  },
+  {
+    "path": "archive/parse2.py.txt",
+    "changed_constants": 4,
+    "private_comments_removed": true,
+    "syntax": true,
+    "original_program_executed": false
+  },
+  {
+    "path": "archive/parse_inv.py.txt",
+    "changed_constants": 4,
+    "private_comments_removed": true,
+    "syntax": true,
+    "original_program_executed": false
+  },
+  {
+    "path": "archive/rebuild_pdfs.py.txt",
+    "changed_constants": 1,
+    "private_comments_removed": true,
+    "syntax": true,
+    "original_program_executed": false
+  }
+]

@@ -1,0 +1,120 @@
+# -*- coding: utf-8 -*-
+import pymupdf, os
+
+BASE = '<LOCAL_INPUT_OR_OUTPUT_PATH>'
+SRC = os.path.join(BASE, "百千万工程三下乡证明资料汇总（终版）.pdf")
+OUT = os.path.join(BASE, "百千万工程三下乡证明资料汇总（终版）.pdf")
+
+W, H = 595.0, 842.0
+# Historical private commentary omitted; executable code retained.
+BX0, BY0, BX1, BY1 = 111.6, 104.2, 523.7, 722.0
+
+src = pymupdf.open(SRC)
+N = src.page_count
+print("源页数", N)
+
+# Historical private commentary omitted; executable code retained.
+blank = pymupdf.open(SRC)
+p2 = blank[1]
+imgrects = []
+for im in p2.get_images(full=True):
+    imgrects += p2.get_image_rects(im[0])
+print("第2页发票图片数:", len(imgrects))
+for r in imgrects:
+    p2.add_redact_annot(r)
+p2.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_REMOVE,
+                    graphics=pymupdf.PDF_REDACT_LINE_ART_NONE,
+                    text=pymupdf.PDF_REDACT_TEXT_NONE)
+# Historical private commentary omitted; executable code retained.
+for i in range(blank.page_count - 1, -1, -1):
+    if i != 1:
+        blank.delete_page(i)
+blank.save("build/blank_form.pdf")
+blank.close()
+print("空白粘贴单页数:", pymupdf.open("build/blank_form.pdf").page_count)
+
+# Historical private commentary omitted; executable code retained.
+def make_variant(amount, count, tag):
+    doc = pymupdf.open("build/blank_form.pdf")
+    pg = doc[0]
+    rects = [pymupdf.Rect(288.0, 756.1, 306.0, 768.1),   # Historical private commentary omitted; executable code retained.
+             pymupdf.Rect(408.1, 756.1, 414.1, 768.1)]   # Historical private commentary omitted; executable code retained.
+    for r in rects:
+        pg.add_redact_annot(r)
+    pg.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE,
+                        graphics=pymupdf.PDF_REDACT_LINE_ART_NONE,
+                        text=pymupdf.PDF_REDACT_TEXT_REMOVE)
+    pg.insert_text((288.0, 766.4), str(amount), fontname="helv", fontsize=12, color=(0, 0, 0))
+    pg.insert_text((408.1, 766.4), str(count), fontname="helv", fontsize=12, color=(0, 0, 0))
+    p = f"build/form_{tag}.pdf"
+    doc.save(p)
+    doc.close()
+    return p
+
+vA = make_variant(429, 3, "A")
+vB = make_variant(130, 2, "B")
+print("变体生成:", vA, vB)
+
+# Historical private commentary omitted; executable code retained.
+# Historical private commentary omitted; executable code retained.
+src_imgs = []
+for im in src[1].get_images(full=True):
+    xref = im[0]
+    for r in src[1].get_image_rects(xref):
+        src_imgs.append((r.y0, r.x0, xref, r))
+src_imgs.sort()
+IW = src_imgs[0][3].width
+IH = src_imgs[0][3].height
+print("单张发票尺寸 %.1f x %.1f" % (IW, IH))
+
+def img_bytes(doc, xref):
+    return doc.extract_image(xref)["image"]
+
+GAP_X = (BX1 - BX0 - 2 * IW) / 3.0        # Historical private commentary omitted; executable code retained.
+GAP_Y = 60.0
+
+def build_page(variant_pdf, items):
+    doc = pymupdf.open(variant_pdf)
+    page = out.new_page(width=W, height=H)
+    page.show_pdf_page(page.rect, doc, 0)
+    doc.close()
+    rows = [items[i:i + 2] for i in range(0, len(items), 2)]
+    block_h = len(rows) * IH + (len(rows) - 1) * GAP_Y
+    top = BY0 + (BY1 - BY0 - block_h) / 2.0
+    for ri, row in enumerate(rows):
+        y = top + ri * (IH + GAP_Y)
+        row_w = len(row) * IW + (len(row) - 1) * GAP_X
+        left = BX0 + (BX1 - BX0 - row_w) / 2.0
+        for ci, (_, _, xref, _r) in enumerate(row):
+            x = left + ci * (IW + GAP_X)
+            page.insert_image(pymupdf.Rect(x, y, x + IW, y + IH),
+                              stream=img_bytes(src, xref))
+    return page
+
+out = pymupdf.open()
+# Historical private commentary omitted; executable code retained.
+out.insert_pdf(src, from_page=0, to_page=0)
+# Historical private commentary omitted; executable code retained.
+build_page(vA, src_imgs[:3])
+# Historical private commentary omitted; executable code retained.
+build_page(vB, src_imgs[3:])
+# Historical private commentary omitted; executable code retained.
+for i in range(2, N):
+    pg = src[i]
+    imgs = pg.get_images(full=True)
+    if 3 <= i <= 37 and len(imgs) == 1:
+        xref = imgs[0][0]
+        r0 = pg.get_image_rects(xref)[0]
+        w, h = r0.width, r0.height
+        x = (W - w) / 2.0
+        y = (H - h) / 2.0
+        np = out.new_page(width=W, height=H)
+        np.insert_image(pymupdf.Rect(x, y, x + w, y + h), stream=img_extract(src, xref) if False else src.extract_image(xref)["image"])
+    else:
+        out.insert_pdf(src, from_page=i, to_page=i)
+
+out.set_metadata({"title": "百千万工程三下乡证明资料汇总"})
+tmp = "build/out_fixed.pdf"
+out.save(tmp, garbage=4, deflate=True)
+out.close(); src.close()
+print("生成临时文件, 页数:", pymupdf.open(tmp).page_count)

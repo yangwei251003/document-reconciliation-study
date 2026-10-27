@@ -1,0 +1,96 @@
+# -*- coding: utf-8 -*-
+import json, openpyxl
+from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+
+recs = json.load(open('final_inv.json', encoding='utf-8'))
+
+JPG_META = {
+    '示例字段_2':  ('示例字段_15', '示例字段_16'),
+    '示例字段_3': ('示例字段_17', '示例字段_18'),
+    '示例字段_4':    ('示例字段_19', '示例字段_20'),
+    '示例字段_5':   ('示例字段_19', '示例字段_21'),
+    '示例字段_6':   ('示例字段_17', '示例字段_22'),
+    '示例字段_7':   ('示例字段_23', '示例字段_24'),
+    '示例字段_8':    ('示例字段_17', '示例字段_22'),
+    '示例字段_9':   ('示例字段_25', '示例字段_26'),
+    '示例字段_10':   ('示例字段_27', '示例字段_28'),
+    '示例字段_11':   ('示例字段_29', '示例字段_30'),
+}
+ORDER = ['示例字段_12', '示例字段_13', '示例字段_14']
+recs.sort(key=lambda r: (ORDER.index(r["folder"]), r["fname_amt"] and int(float(r["fname_amt"])*100) or 0) if False else 0)
+# Historical private commentary omitted; executable code retained.
+import re
+recs.sort(key=lambda r: (ORDER.index(r["folder"]), int(re.match(r'(\d+)', r["file"]).group(1))))
+
+wb = openpyxl.Workbook()
+ws = wb.active
+ws.title = "发票核对明细"
+
+thin = Side(style="thin", color="FFBFBFBF")
+BOX = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+ws["A1"] = '示例字段_1'
+ws["A1"].font = Font(name="宋体", size=14, bold=True)
+ws["A2"] = '<SYNTHETIC_IDENTIFIER>'
+ws["A2"].font = Font(name="宋体", size=9, color="FF666666")
+
+hdr = ["序号", "类别", "发票文件", "发票号码", "开票日期", "销售方 / 开票方", "项目 / 摘要", "票面金额(元)", "文件名标注(元)", "核对结果"]
+for i, h in enumerate(hdr, start=1):
+    c = ws.cell(row=4, column=i, value=h)
+    c.font = Font(name="宋体", size=10, bold=True)
+    c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    c.border = BOX
+    c.fill = PatternFill("solid", fgColor="FFEAF1F8")
+
+CAT = {"交通XXX": "交通费", "餐食XXX": "餐饮费", "物资XXX": "物资费"}
+r = 5
+for idx, rec in enumerate(recs, start=1):
+    is_jpg = rec["file"].lower().endswith(".jpg")
+    issue, item = JPG_META.get(rec["file"], (None, None))
+    vals = [idx, CAT[rec["folder"]], rec["file"],
+            rec["inv_no"] if rec["inv_no"] else "（图片发票）",
+            (rec["issue"] or issue or "").replace("2026年", "").replace("月", "-").replace("日", ""),
+            rec["seller"] if rec["seller"] else ("（图片发票）" if is_jpg else "—"),
+            rec["item"],
+            rec["total"], rec["fname_amt"],
+            "一致" if rec["ok"] else "不一致"]
+    for ci, v in enumerate(vals, start=1):
+        c = ws.cell(row=r, column=ci, value=v)
+        c.font = Font(name="宋体", size=10)
+        c.border = BOX
+        c.alignment = Alignment(horizontal="center" if ci in (1, 2, 5, 8, 9, 10) else "left",
+                                vertical="center", wrap_text=ci in (3, 6, 7))
+        if ci == 8 or ci == 9:
+            c.number_format = "0.00"
+    ws.row_dimensions[r].height = 30
+    r += 1
+
+# Historical private commentary omitted; executable code retained.
+ws.cell(row=r, column=1, value="合计")
+ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=7)
+ws.cell(row=r, column=8, value="=SUM(H5:H%d)" % (r - 1))
+ws.cell(row=r, column=9, value="=SUM(I5:I%d)" % (r - 1))
+ws.cell(row=r, column=10, value="39 张 / 全部一致")
+for ci in range(1, 11):
+    c = ws.cell(row=r, column=ci)
+    c.font = Font(name="宋体", size=10, bold=True)
+    c.border = BOX
+    c.alignment = Alignment(horizontal="center", vertical="center")
+    if ci in (8, 9):
+        c.number_format = "0.00"
+ws.row_dimensions[r].height = 24
+
+widths = {"A": 6, "B": 9, "C": 24, "D": 22, "E": 11, "F": 30, "G": 22, "H": 13, "I": 13, "J": 10}
+for k, v in widths.items():
+    ws.column_dimensions[k].width = v
+ws.freeze_panes = "A5"
+ws.print_area = "A1:J%d" % r
+ws.page_setup.orientation = "landscape"
+ws.page_setup.paperSize = 9
+ws.sheet_properties.pageSetUpPr.fitToPage = True
+ws.page_setup.fitToWidth = 1
+ws.page_setup.fitToHeight = 0
+
+out = '<LOCAL_INPUT_OR_OUTPUT_PATH>'
+wb.save(out)
+print("saved:", out, "rows:", r)

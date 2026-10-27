@@ -1,0 +1,77 @@
+# -*- coding: utf-8 -*-
+import pymupdf, os, re, json
+
+ROOT = '<LOCAL_INPUT_OR_OUTPUT_PATH>'
+FOLDERS = ['示例字段_12', '示例字段_13', '示例字段_14']
+
+DIGIT = {'零':0,'壹':1,'贰':2,'叁':3,'肆':4,'伍':5,'陆':6,'柒':7,'捌':8,'玖':9,
+         '一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'两':2}
+UNIT = {'拾':10,'十':10,'佰':100,'百':100,'仟':1000,'千':1000}
+
+def cn2num(s):
+    s = s.replace('整','').replace('正','')
+    total = 0; section = 0; number = 0
+    for ch in s:
+        if ch in DIGIT:
+            number = DIGIT[ch]
+        elif ch in UNIT:
+            section += (number if number else 1) * UNIT[ch]
+            number = 0
+        elif ch == '万':
+            section = (section + number) * 10000
+            total += section; section = 0; number = 0
+        elif ch == '亿':
+            total = (total + section + number) * 100000000
+            section = 0; number = 0
+        elif ch in '圆元':
+            total += section + number
+            section = 0; number = 0
+        elif ch == '角':
+            total += number / 10
+            number = 0
+        elif ch == '分':
+            total += number / 100
+            number = 0
+    return round(total + section + number, 2)
+
+out = []
+for fd in FOLDERS:
+    d = os.path.join(ROOT, fd)
+    files = sorted([f for f in os.listdir(d) if f.lower().endswith('.pdf')],
+                   key=lambda x: int(re.match(r'(\d+)', x).group(1)) if re.match(r'(\d+)', x) else 999)
+    for f in files:
+        doc = pymupdf.open(os.path.join(d, f))
+        txt = "\n".join(pg.get_text() for pg in doc)
+        flat = re.sub(r'[ \t]+', ' ', txt)
+        amts = [float(x.replace(',', '')) for x in re.findall(r'[￥¥]\s*([\d,]+\.\d{2})', flat)]
+        # Historical private commentary omitted; executable code retained.
+        cn = re.search(r'([零壹贰叁肆伍陆柒捌玖拾佰仟万亿]{2,}[圆元](?:[零壹贰叁肆伍陆柒捌玖]角)?(?:[零壹贰叁肆伍陆柒捌玖]分)?整?)', flat)
+        cn_val = cn2num(cn.group(1)) if cn else None
+        total = max(amts) if amts else None
+        if cn_val is not None and abs(cn_val - (total or 0)) < 0.01:
+            total = cn_val
+            check = "OK"
+        elif cn_val is None:
+            check = "无大写"
+        else:
+            check = f"大写={cn_val} 不一致"
+        m = re.search(r'(20\d{2}年\d{1,2}月\d{1,2}日)', flat)
+        inv = re.findall(r'\b\d{20}\b', flat) or re.findall(r'\b\d{8,19}\b', flat)
+        sellers = [l.strip() for l in flat.split('\n') if re.search(r'(有限公司|有限责任公司|分公司|个体工商户|商店|商行|门市|超市|经营部|厂|店)$', l.strip())]
+        out.append(dict(folder=fd, file=f,
+                        fname_amt=float(re.search(r'([\d.]+)\.pdf$', f).group(1)) if re.search(r'([\d.]+)\.pdf$', f) else None,
+                        total=total, cn_check=check, issue=m.group(1) if m else None,
+                        inv_no=(max(inv, key=len) if inv else None),
+                        seller=sellers[0] if sellers else None,
+                        buyer_ok=('广州科技职业技术大学' in flat)))
+        r = out[-1]
+        flag = "✓" if r['fname_amt'] is not None and r['total'] is not None and abs(r['fname_amt']-r['total'])<0.005 else "✗"
+        print(f"{flag} [{fd}] {f:<26} 票面={r['total']:<8} 文件名={r['fname_amt']:<8} {r['cn_check']:<6} 开票={r['issue']} 购买方={'学校' if r['buyer_ok'] else '?'} 销售方={r['seller']}")
+        if r['inv_no']:
+            pass
+json.dump(out, open('invoices.json','w',encoding='utf-8'), ensure_ascii=False, indent=1)
+print("\nPDF 总数:", len(out))
+for fd in FOLDERS:
+    s = sum(x['total'] or 0 for x in out if x['folder']==fd)
+    print(f"{fd} 票面合计 = {round(s,2)}  ({len([x for x in out if x['folder']==fd])} 张)")
+print("总计 =", round(sum(x['total'] or 0 for x in out),2))

@@ -1,0 +1,106 @@
+# -*- coding: utf-8 -*-
+import pymupdf, os, re, shutil, sys
+from rapidocr_onnxruntime import RapidOCR
+
+IMG = "build/wz/16 折纸5.48.jpeg"
+DST = '<LOCAL_INPUT_OR_OUTPUT_PATH>'
+PAGE_W = 595.0
+
+# Historical private commentary omitted; executable code retained.
+DROP = re.compile('示例字段_57')
+FIX = [('示例字段_58', '示例字段_59'), ('示例字段_60', '示例字段_61'),
+       ('示例字段_62', '示例字段_63'), ('示例字段_64', '示例字段_63')]
+
+def clean(t):
+    t = t.strip()
+    for a, b in FIX:
+        t = re.sub(a, b, t)
+    return t
+
+ocr = RapidOCR()
+res, _ = ocr(IMG)
+res = res or []
+
+pm = pymupdf.Pixmap(IMG)
+page_h = PAGE_W * pm.height / pm.width
+scale = PAGE_W / pm.width
+
+# Historical private commentary omitted; executable code retained.
+tmp = pymupdf.open()
+p0 = tmp.new_page(width=pm.width, height=pm.height)
+p0.insert_image(pymupdf.Rect(0, 0, pm.width, pm.height), filename=IMG)
+png = p0.get_pixmap(matrix=pymupdf.Matrix(2, 2)).tobytes("png")
+tmp.close()
+
+doc = pymupdf.open()
+page = doc.new_page(width=PAGE_W, height=page_h)
+page.insert_image(pymupdf.Rect(0, 0, PAGE_W, page_h), stream=png)
+
+# Historical private commentary omitted; executable code retained.
+def _key(it):
+    xs = [float(p[0]) for p in it[0]]; ys = [float(p[1]) for p in it[0]]
+    return (round(min(ys) / 8.0), min(xs))
+res = sorted(res, key=_key)
+
+# Historical private commentary omitted; executable code retained.
+def _reorder(res):
+    idx = [i for i, it in enumerate(res) if ("价税合计" in it[1] or "（小写）" in it[1]
+           or "（大写）" in it[1] or it[1].strip().endswith(("整", "分")))]
+    if not idx:
+        return res
+    grp = [res[i] for i in idx]
+    label = [x for x in grp if "（大写）" in x[1]]
+    small = [x for x in grp if "小写" in x[1]]
+    cn    = [x for x in grp if x not in label and x not in small]
+    if not label or not small:
+        return res
+    newgrp = label[:1] + cn + small[:1]
+    out, g = [], 0
+    for i, it in enumerate(res):
+        if i in idx:
+            if g < len(newgrp):
+                out.append(newgrp[g]); g += 1
+            continue
+        out.append(it)
+    return out
+
+res = _reorder(res)
+
+kept, dropped = 0, []
+for item in res:
+    box, raw = item[0], item[1]
+    conf = float(item[2])
+    if conf < 0.5 or not raw.strip():
+        continue
+    txt = clean(raw)
+    if DROP.search(txt):
+        dropped.append(txt); continue
+    xs = [float(p[0]) for p in box]; ys = [float(p[1]) for p in box]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    h = (y1 - y0) * scale
+    w = (x1 - x0) * scale
+    size = max(4.0, h * 0.82)
+    maxw = min(w * 1.4, PAGE_W - x0 * scale - 4)
+    if maxw > 0:
+        size = max(3.0, min(size, maxw / max(1, len(txt)) / 1.02))
+    xs_pt = x0 * scale
+    w_est = size * len(txt) * 1.02
+    if xs_pt + w_est > PAGE_W - 2:
+        xs_pt = max(0.0, PAGE_W - 2 - w_est)
+    page.insert_text((xs_pt, y1 * scale - h * 0.12), txt,
+                     fontname="china-s", fontsize=size, color=(0, 0, 0), render_mode=3)
+    kept += 1
+
+doc.set_metadata({"title": "16 折纸5.48", "producer": "RapidOCR text layer (cleaned)"})
+out = "build/new_pdf/16 折纸5.48.pdf"
+doc.save(out, garbage=4, deflate=True)
+doc.close()
+
+d = pymupdf.open(out)
+t = d[0].get_text()
+print("剔除的噪声行:", dropped)
+print("保留行数:", kept, "| 文字长度:", len(t.strip()))
+print("含'税务局':", "税务局" in t, "| 含'开票日期':", "开票日期" in t)
+print("--- 文字层 ---")
+print(t.strip())
+d.close()

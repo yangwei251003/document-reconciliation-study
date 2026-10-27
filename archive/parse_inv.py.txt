@@ -1,0 +1,44 @@
+# -*- coding: utf-8 -*-
+import pymupdf, os, re, sys, glob, json
+
+root = '<LOCAL_INPUT_OR_OUTPUT_PATH>'
+folders = ['示例字段_12', '示例字段_13', '示例字段_14']
+ALL = []
+for fd in folders:
+    d = os.path.join(root, fd)
+    files = sorted(os.listdir(d), key=lambda x: [int(t) if t.isdigit() else 0 for t in re.split(r'(\d+)', x)])
+    for f in files:
+        if not f.lower().endswith(".pdf"):
+            continue
+        p = os.path.join(d, f)
+        doc = pymupdf.open(p)
+        txt = "\n".join(pg.get_text() for pg in doc)
+        flat = re.sub(r'\s+', ' ', txt)
+        rec = {"folder": fd, "file": f, "pages": doc.page_count}
+        m = re.search(r'票价[:：]\s*[￥¥]\s*([\d,]+\.\d{2})', flat)
+        if m:
+            rec["type"] = "铁路电子客票"
+            rec["amount"] = float(m.group(1).replace(',', ''))
+        else:
+            m = re.search(r'[（(]小写[)）]\s*[￥¥]\s*([\d,]+\.\d{2})', flat)
+            if not m:
+                m = re.search(r'[￥¥]\s*([\d,]+\.\d{2})', flat)
+            rec["type"] = "电子发票"
+            rec["amount"] = float(m.group(1).replace(',', '')) if m else None
+        m = re.search(r'开票日期[:：]?\s*(\d{4}年\d{2}月\d{2}日)', flat)
+        rec["issue_date"] = m.group(1) if m else None
+        m = re.search(r'发票号码[:：]?\s*(\d{8,})', flat)
+        rec["inv_no"] = m.group(1) if m else None
+        rec["buyer_ok"] = "广州科技职业技术大学" in flat
+        m = re.search(r'购买方名称[:：]?\s*(\S+)', flat)
+        rec["buyer"] = m.group(1) if m else None
+        # Historical private commentary omitted; executable code retained.
+        m = re.search(r'销售方[^名]*名称[:：]\s*([^\s|]+)', flat)
+        rec["seller"] = m.group(1) if m else None
+        names = re.findall(r'[\u4e00-\u9fa5]{2,3}(?=\s*\d{17}[\dXx]|\s*$)', flat)
+        rec["raw_head"] = flat[:0]
+        ALL.append(rec)
+        print(f"[{fd}] {f}")
+        print(f"    type={rec['type']} amount={rec['amount']} issue={rec['issue_date']} no={rec['inv_no']} buyer_ok={rec['buyer_ok']} buyer={rec['buyer']} seller={rec['seller']}")
+json.dump(ALL, open('inv.json','w',encoding='utf-8'), ensure_ascii=False, indent=1)
+print("TOTAL PDF:", len(ALL))

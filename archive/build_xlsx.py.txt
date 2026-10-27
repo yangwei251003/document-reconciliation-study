@@ -1,0 +1,150 @@
+# -*- coding: utf-8 -*-
+import openpyxl
+import sys
+from openpyxl.styles import Font, Alignment, Border, Side
+
+wb = openpyxl.Workbook()
+ws = wb.active
+ws.title = "费用支出明细表"
+
+thin = Side(style="thin", color="FF000000")
+BOX = Border(left=thin, right=thin, top=thin, bottom=thin)
+F11 = Font(name="宋体", size=11)
+CENTER = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+# Historical private commentary omitted; executable code retained.
+widths = {"A": 17.0, "B": 17.0, "C": 14.0, "D": 16.0, "E": 9.0, "F": 7.0,
+          "G": 8.0, "H": 10.0, "I": 22.0, "J": 9.0}
+for k, v in widths.items():
+    ws.column_dimensions[k].width = v
+
+ws.row_dimensions[1].height = 26
+ws.row_dimensions[2].height = 24
+ws.row_dimensions[3].height = 44
+for r in range(4, 8):
+    ws.row_dimensions[r].height = 64
+ws.row_dimensions[8].height = 40
+
+# Historical private commentary omitted; executable code retained.
+ws["A1"] = '示例字段_31'
+ws["A1"].font = Font(name="宋体", size=18, bold=True)
+ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+
+ws["A2"] = '示例字段_32'
+ws["A2"].font = Font(name="宋体", size=10)
+ws["A2"].alignment = Alignment(horizontal="left", vertical="center")
+ws["I2"] = '示例字段_33'
+ws["I2"].font = Font(name="宋体", size=10)
+ws["I2"].alignment = Alignment(horizontal="center", vertical="center")
+
+# Historical private commentary omitted; executable code retained.
+headers = ["日期", "项目", "地点", "参加人员名单", "费用类别", "单价", "数量", "金额", "备注", "发票张数"]
+for i, h in enumerate(headers, start=1):
+    c = ws.cell(row=3, column=i, value=h)
+    c.font = F11
+    c.alignment = CENTER
+    c.border = BOX
+
+# Historical private commentary omitted; executable code retained.
+project = '示例字段_34'
+people = '示例字段_35'
+place = '示例字段_36'
+date_txt = '示例字段_37'
+
+rows = [
+    ('示例字段_44', '示例字段_45', '示例字段_46', 1.0,
+     '示例字段_47', 1),
+    ('示例字段_48', '示例字段_45', '示例字段_49', 1.0,
+     '示例字段_50', 1),
+    ('示例字段_51', '示例字段_45', '示例字段_52', 1.0,
+     '示例字段_53', 1),
+    ('示例字段_54', '示例字段_45', '示例字段_55', 1.0,
+     '示例字段_56', 1),
+]
+
+for idx, (cat, price, qty, amt, memo, inv) in enumerate(rows):
+    r = 4 + idx
+    vals = {1: date_txt if idx == 0 else None,
+            2: project if idx == 0 else None,
+            3: place if idx == 0 else None,
+            4: people if idx == 0 else None,
+            5: cat, 6: price, 7: qty, 8: amt, 9: memo, 10: inv}
+    for col in range(1, 11):
+        c = ws.cell(row=r, column=col, value=vals[col])
+        c.font = F11
+        c.border = BOX
+        c.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True) if col == 9 else CENTER
+        if col == 8:
+            c.number_format = "0.00"
+
+# Historical private commentary omitted; executable code retained.
+for col in range(1, 11):
+    c = ws.cell(row=8, column=col)
+    c.border = BOX
+    c.font = F11
+    c.alignment = CENTER
+ws["A8"] = '示例字段_38'
+ws["H8"] = "=SUM(H4:H7)"
+ws["H8"].number_format = "0.00"
+ws["J8"] = 1
+
+# Historical private commentary omitted; executable code retained.
+ws["A9"] = '示例字段_39'
+ws["A9"].font = F11
+ws["A9"].alignment = Alignment(horizontal="left", vertical="center")
+
+notes = [
+    '示例字段_40',
+    '示例字段_41',
+    '示例字段_42',
+    '示例字段_43',
+]
+for i, t in enumerate(notes, start=10):
+    ws.cell(row=i, column=1, value=t).font = F11
+
+# Historical private commentary omitted; executable code retained.
+ws.merge_cells("A1:J1")
+ws.merge_cells("I2:J2")
+ws.merge_cells("A4:A7")
+ws.merge_cells("B4:B7")
+ws.merge_cells("C4:C7")
+ws.merge_cells("D4:D7")
+ws.merge_cells("A8:G8")
+
+# Historical private commentary omitted; executable code retained.
+for r in range(3, 9):
+    for col in range(1, 11):
+        c = ws.cell(row=r, column=col)
+        c.border = BOX
+        if c.font is None or c.font.name != "宋体":
+            c.font = F11
+
+# Historical private commentary omitted; executable code retained.
+ws.page_setup.paperSize = 9
+ws.page_setup.orientation = "portrait"
+ws.sheet_properties.pageSetUpPr.fitToPage = True
+ws.page_setup.fitToWidth = 1
+ws.page_setup.fitToHeight = 1
+ws.print_area = "A1:J13"
+wb.calculation.fullCalcOnLoad = True
+
+out = sys.argv[1] if len(sys.argv) > 1 else '<LOCAL_INPUT_OR_OUTPUT_PATH>'
+wb.save(out)
+print("saved:", out)
+
+# Historical private commentary omitted; executable code retained.
+import zipfile, shutil
+tmp = out + ".tmp"
+zin = zipfile.ZipFile(out, "r")
+zout = zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED)
+for item in zin.infolist():
+    data = zin.read(item.filename)
+    if item.filename == "xl/worksheets/sheet1.xml":
+        s = data.decode("utf-8")
+        s = s.replace('<c r="H8" s="5"><f>SUM(H4:H7)</f><v /></c>',
+                      '<c r="H8" s="5"><f>SUM(H4:H7)</f><v>1842.92</v></c>')
+        data = s.encode("utf-8")
+    zout.writestr(item, data)
+zout.close(); zin.close()
+shutil.move(tmp, out)
+print("cached total written")

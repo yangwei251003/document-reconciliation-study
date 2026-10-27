@@ -1,0 +1,87 @@
+# -*- coding: utf-8 -*-
+import pymupdf, os, re, json
+
+ROOT = '<LOCAL_INPUT_OR_OUTPUT_PATH>'
+BANK = '<SYNTHETIC_IDENTIFIER>'
+
+def parse_pdf(path, folder, fname):
+    doc = pymupdf.open(path)
+    txt = "\n".join(pg.get_text() for pg in doc)
+    lines = [l.strip() for l in txt.split("\n") if l.strip()]
+    flat = " ".join(lines)
+    nums20 = [n for n in re.findall(r'\d{20}', flat) if n != BANK]
+    inv_no = nums20[0] if nums20 else None
+
+    # Historical private commentary omitted; executable code retained.
+    m = re.search(r'开票日期[:：]?\s*(20\d{2}年\d{1,2}月\d{1,2}日)', flat)
+    if not m:
+        m = re.search(r'(20\d{2}年\d{1,2}月\d{1,2}日)', flat)
+    issue = m.group(1) if m else None
+
+    train = "铁路电子客票" in flat
+    amts = [float(x.replace(',', '')) for x in re.findall(r'[￥¥]\s*([\d,]+\.\d{2})', flat)]
+    total = max(amts) if amts else None
+
+    pax = None
+    item = None
+    if train:
+        m = re.search(r'(\d{6}\*{4}\d{4})\s+([\u4e00-\u9fa5]{2,4})', flat)
+        pax = m.group(2) if m else None
+        m2 = re.search(r'票价[:：]?\s*[￥¥]?\s*([\d.]+)', flat)
+        if m2:
+            total = float(m2.group(1))
+        item = "铁路电子客票" + ("／" + pax if pax else "")
+        seller = "中国铁路（12306）"
+    else:
+        # Historical private commentary omitted; executable code retained.
+        cand = [l for l in lines if l.startswith("*") and len(l) > 3]
+        item = cand[0] if cand else None
+        seller = None
+        for l in lines:
+            s = re.sub(r'^名称[:：]\s*', '', l).strip()
+            if re.search(r'(有限公司|有限责任公司|分公司|个体工商户|商店|商行|门市|超市|经营部|厂|店)$', s) \
+               and "广州科技职业技术大学" not in s and "银行" not in s:
+                seller = s
+                break
+    # Historical private commentary omitted; executable code retained.
+    trip = None
+    ms = re.findall(r'(20\d{2}-\d{2}-\d{2})', flat)
+    if ms:
+        trip = ms[0]
+    buyer_ok = "广州科技职业技术大学" in flat
+    return dict(folder=folder, file=fname, inv_no=inv_no, issue=issue, seller=seller,
+                buyer="广州科技职业技术大学" if buyer_ok else "?", total=total,
+                train=train, pax=pax, item=item, trip=trip)
+
+recs = []
+for fd in ["交通XXX", "餐食XXX", "物资XXX"]:
+    d = os.path.join(ROOT, fd)
+    for f in sorted([x for x in os.listdir(d) if x.lower().endswith('.pdf')],
+                    key=lambda x: int(re.match(r'(\d+)', x).group(1))):
+        recs.append(parse_pdf(os.path.join(d, f), fd, f))
+
+jpg = [("7 便利贴23.5.jpg", 23.50, "文具*便利贴", ("2026年07月30日",)),
+       ("8 钥匙扣20.74.jpg", 20.74, "金属制品*怪兽钥匙扣", ("2026年08月11日",)),
+       ("9 零食13.2.jpg", 13.20, "焙烤食品*旺旺小酥儿", ("2026年08月15日",)),
+       ("10 玩具11.9.jpg", 11.90, "玩具*填充类玩具", ("2026年08月15日",)),
+       ("11 食品11.8.jpg", 11.80, "其他食品*食品", ("2026年08月11日",)),
+       ("12 零食10.9.jpg", 10.90, "焙烤食品*脆纸麦茨", ("2026年07月27日",)),
+       ("13 食品9.9.jpg", 9.90, "其他食品*食品", ("2026年08月11日",)),
+       ("14 糖果8.47.jpg", 8.47, "糖果类食品*糖果", ("2026年08月14日",)),
+       ("15 手胶7.41.jpg", 7.41, "体育用品*手胶", ("2026年07月26日",)),
+       ("16 折纸5.48.jpg", 5.48, "纸制品*折纸", ("2026年08月06日",))]
+for f, a, item, iss in jpg:
+    recs.append(dict(folder="物资XXX", file=f, inv_no=None, issue=iss[0], seller="（图片发票）",
+                     buyer="广州科技职业技术大学", total=a, train=False, pax=None, item=item, trip=None))
+
+for r in recs:
+    fn = re.search(r'([\d.]+)\.(pdf|jpg)$', r['file'])
+    r['fname_amt'] = float(fn.group(1)) if fn else None
+    r['ok'] = (r['total'] is not None and r['fname_amt'] is not None and abs(r['total'] - r['fname_amt']) < 0.005)
+
+json.dump(recs, open('final_inv.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+for r in recs:
+    print(f"{r['folder'][:2]} {r['file']:<22} {r['total']:<8} {r['issue']} {r['seller']} | {r['item']} | {'OK' if r['ok'] else 'NG'} | buyer={r['buyer']}")
+print("\n合计", round(sum(x['total'] for x in recs), 2), "张数", len(recs))
+print("购买方异常:", [x['file'] for x in recs if x['buyer'] != '广州科技职业技术大学'])
+print("缺项目:", [x['file'] for x in recs if not x['item']])
